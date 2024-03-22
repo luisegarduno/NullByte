@@ -9,23 +9,23 @@ Nullbyte Walkthrough
 
 ### Scanning
 
-I began by using *netdiscover* to scan my network for computers/devices:
+Begin by using *netdiscover* to scan for computers/devices on the network:
 ```bash
 sudo netdiscover
 ```
 
-This then returned the IP address of the target machine: ***192.168.132.88***. From there I proceeded to do my intial scan on the network using *nmap*:
+This returns the IP address of the target machine: ***192.168.132.88***. From there do a intial nmap scan on the network:
 ```bash
 nmap -A -p0-65535 192.168.132.88
 ```
 
-The nmap scan returns promising results as there are a couple of ports open:     
+Ports found open:     
 - 80/tcp - HTTP 
 - 111/tcp - RPCBIND
 - 777/tcp - SSH
 - 60316/tcp
 
-The two services that stood out to me immediately were HTTP & SSH. Note that SSH (port 22) is being forwarded to port 777, we'll keep this in mind for later.
+Two services that stand out are HTTP & SSH. Note that SSH (port 22) is being forwarded to port 777 (keep in mind for later).
 
 ### Website Exploring
 
